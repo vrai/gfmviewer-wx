@@ -2,7 +2,11 @@
 
 import sys
 
-# TODO Check required modules are present
+# Tested again wxPython 2.8 (stable) and 2.9 (development), don't run against
+# untested versions
+if not hasattr ( sys, 'frozen' ):
+    import wxversion
+    wxversion.select ( ( '2.8', '2.9' ) )
 
 # TODO Find a proper file system watcher
 
