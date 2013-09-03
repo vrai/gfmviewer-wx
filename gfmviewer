@@ -121,7 +121,9 @@ class MainFrame ( wx.Frame ):
         self.__resq = None
         self.__proc = None
 
-        self.__fpkr = wx.FilePickerCtrl ( self, style = wx.FLP_USE_TEXTCTRL | wx.FLP_OPEN | wx.FLP_FILE_MUST_EXIST | wx.FLP_CHANGE_DIR )
+        self.__fpkr = wx.FilePickerCtrl (
+                self, style = wx.FLP_USE_TEXTCTRL | wx.FLP_OPEN |
+                    wx.FLP_FILE_MUST_EXIST | wx.FLP_CHANGE_DIR )
         self.__html = wx.html.HtmlWindow (
             self, style = wx.SIMPLE_BORDER | wx.HSCROLL | wx.VSCROLL )
         self.__sbar = wx.StatusBar ( self, style = 0 )
@@ -129,8 +131,8 @@ class MainFrame ( wx.Frame ):
         refresh = wx.Button ( self, label = 'Refresh' )
 
         topbar = wx.BoxSizer ( wx.HORIZONTAL )
-        topbar.Add ( self.__fpkr, 1, wx.EXPAND )
-        topbar.Add ( refresh, 0, wx.LEFT, 4 )
+        topbar.Add ( self.__fpkr, 1, wx.EXPAND | wx.ALIGN_CENTER, 0 )
+        topbar.Add ( refresh, 0, wx.LEFT | wx.ALIGN_CENTER, 4 )
 
         sizer = wx.BoxSizer ( wx.VERTICAL )
         sizer.Add ( topbar, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 4 )
