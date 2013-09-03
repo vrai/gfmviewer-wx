@@ -1,0 +1,237 @@
+#!/usr/bin/python -t
+
+import sys
+
+# TODO Check required modules are present
+
+# TODO Find a proper file system watcher
+
+import argparse, httplib, json, os, signal, stat
+import wx, wx.lib.newevent
+from multiprocessing import Process, Queue
+from Queue import Empty
+
+FileChangeEvent, EVT_FILE_CHANGED = wx.lib.newevent.NewEvent ( )
+HtmlChangeEvent, EVT_HTML_CHANGED = wx.lib.newevent.NewEvent ( )
+
+
+class LoaderProcess ( Process ):
+    def __init__ ( self, parent, fn, inq, outq ):
+        Process.__init__ ( self )
+        self.__parent = parent
+        self.__fn = fn
+        self.__inq = inq
+        self.__outq = outq
+
+    def run ( self ):
+        while True:     # TODO Exit condition
+            try:
+                ts = self._getnext ( )
+                res = self._process ( ts )
+                self.__outq.put ( res )
+                os.kill ( self.__parent, signal.SIGUSR1 )
+            except KeyboardInterrupt:
+                break
+            except Exception, err:
+                sys.stderr.write ( 'LoaderProcess error: %s\n\n' % err )
+                raise   # TODO Remove
+
+    def _getnext ( self ):
+        # If there's more than one value in the queue, consume until the last
+        # one is found and return that. Is the queue is empty, block.
+        ts = None
+        try:
+            while True:
+                ts = self.__inq.get_nowait ( )
+        except Empty:
+            if ts is None:
+                ts = self.__inq.get ( )
+        return ts
+
+    def _process ( self, ts ):
+        base = self._loadbase ( )
+        html = self._encode ( base )
+        return ts, html
+
+    def _loadbase ( self ):
+        try:
+            with open ( self.__fn, 'rb' ) as fh:
+                return fh.read ( )
+        except IOError, err:
+            return None
+
+    def _encode ( self, base ):
+        conn = httplib.HTTPSConnection ( 'api.github.com', timeout = 16 )
+        conn.connect ( )
+        try:
+            conn.request (
+                'POST', 
+                '/markdown/raw',
+                base,
+                {
+                    'content-type' : 'text/plain'
+                } )
+            res = conn.getresponse ( )
+            if res.status != 200:
+                raise Exception, 'Error response from server: %s - %s' % (
+                    res.status, res.reason )
+            return res.read ( )
+        finally:
+            try:
+                conn.close ( )
+            except Error:
+                pass
+
+
+class FileSystemMon ( object):
+    def __init__ ( self, fn ):
+        self.__fn = fn
+        self.__ts = -1
+
+    @property
+    def fn ( self ):
+        return self.__fn
+
+    @property
+    def ts ( self ):
+        return self.__ts
+
+    def check ( self ):
+        ts = os.stat ( self.__fn ) [ stat.ST_MTIME ]
+        if ts != self.__ts:
+            self.__ts = ts
+            return True
+        return False
+
+
+class MainFrame ( wx.Frame ):
+    def __init__ ( self ):
+        wx.Frame.__init__ (
+            self, None, wx.ID_ANY, 'Testing' )
+        self.__fnwait = 1000
+        self.__fntmr = None
+        self.__fnmon = None
+
+        self.__reqq = None
+        self.__resq = None
+        self.__proc = None
+
+        self.Bind ( EVT_FILE_CHANGED, self._fileChangeHandler )
+        self.Bind ( EVT_HTML_CHANGED, self._htmlChangeHandler )
+        self.Bind ( wx.EVT_CLOSE,     self._closeHandler )
+
+        signal.signal ( signal.SIGUSR1, self._sigHandler )
+
+    def setFilename ( self, fn ):
+        if self.__fntmr and self.__fntmr.IsRunning ( ):
+            self.__fntmr.Stop ( )
+        self._destroyProc ( )
+
+        self.__fnmon = FileSystemMon ( fn )
+        self.__fntmr = wx.PyTimer ( self._checkFile )
+        self.__fntmr.Start ( self.__fnwait )
+
+    def _destroyProc ( self ):
+        if self.__proc and self.__proc.is_alive ( ):
+            print '!!! Terminating', self.__proc
+            self.__proc.terminate ( )
+        self.__proc = None
+        self.__reqq = None
+        self.__resq = None
+
+    def _checkFile ( self ):
+        if self.__fnmon.check ( ):
+            evt = FileChangeEvent ( ts = self.__fnmon.ts )
+            wx.PostEvent ( self, evt )
+
+    def _closeHandler ( self, evt ):
+        self._destroyProc ( )
+        self.Destroy ( )
+
+    def _fileChangeHandler ( self, evt ):
+        assert ( isinstance ( evt, FileChangeEvent ) )
+
+        if not self.__proc:
+            self.__reqq = Queue ( )
+            self.__resq = Queue ( )
+            self.__proc = LoaderProcess (
+                os.getpid ( ),
+                self.__fnmon.fn,
+                self.__reqq,
+                self.__resq )
+            self.__proc.start ( )
+            print '!!! Spawned', self.__proc
+
+        print '!!! Sent', self.__fnmon.ts
+        self.__reqq.put ( self.__fnmon.ts )
+
+    def _htmlChangeHandler ( self, evt ):
+        assert ( isinstance ( evt, HtmlChangeEvent ) )
+
+        print '!!! Got', evt.html
+
+    def _sigHandler ( self, signum, frame ):
+        assert ( signum == signal.SIGUSR1 )
+
+        # Block if empty otherwise discard all but the last value in the
+        # queue and return it.
+        res = None
+        try:
+            while True:
+                res = self.__resq.get_nowait ( )
+        except Empty:
+            if res is None:
+                res = self.__resq.get ( )
+
+        # Don't manipulate the GUI from a signal handler
+        evt = HtmlChangeEvent ( ts = res [ 0 ], html = res [ 1 ] )
+        wx.CallAfter ( wx.PostEvent, self, evt )
+
+
+def _fork ( cfg ):
+    # Fork process, make it a session leader and change its working directory
+    # to one that's (hopefully) not going to be unmounted
+    pid = os.fork ( )
+    if pid:
+        sys.exit ( 0 )
+    os.setsid ( )
+    os.chdir ( '/' )
+
+    # Close stdin, out and err and replace them with /dev/null
+    for fd in range ( 0, 3 ):
+        try:
+            os.close ( fd )
+        except OSError:
+            pass
+
+    os.open ( os.devnull, os.O_RDWR )
+    os.dup2 ( 0, 1 )
+    os.dup2 ( 0, 2 )
+
+
+def _getconfig ( ):
+    parser = argparse.ArgumentParser ( description =
+        'TODO Some kind of blurb is required here. '
+        'Maybe an example?' )
+
+    parser.add_argument (
+        'fn', metavar = 'FILE', type = str, nargs = 1,
+        help = 'markdown file to display' )
+    parser.add_argument (
+        '-f', '--fork', action = 'store_true',
+        help = 'fork a copy of the process in to the background and then '
+               'return immediately (leaving the background process running)' )
+
+    return parser.parse_args ( )
+
+
+if __name__ == '__main__':
+    cfg = _getconfig ( )
+    if cfg.fork:
+        _fork ( cfg )
+
+    app = wx.App ( False )
+    frame = MainFrame ( )
+    frame.setFilename ( cfg.fn [ 0 ] )
+    frame.Show ( True )
+    app.MainLoop ( )
