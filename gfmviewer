@@ -7,7 +7,7 @@ import sys
 # TODO Find a proper file system watcher
 
 import argparse, httplib, json, os, signal, stat
-import wx, wx.lib.newevent
+import wx, wx.html, wx.lib.newevent
 from multiprocessing import Process, Queue
 from Queue import Empty
 
@@ -116,6 +116,12 @@ class MainFrame ( wx.Frame ):
         self.__resq = None
         self.__proc = None
 
+        self.__html = wx.html.HtmlWindow ( self )
+
+        sizer = wx.BoxSizer ( wx.VERTICAL )
+        sizer.Add ( self.__html, 1, wx.EXPAND | wx.ALL, 4 )
+        self.SetSizer ( sizer )
+
         self.Bind ( EVT_FILE_CHANGED, self._fileChangeHandler )
         self.Bind ( EVT_HTML_CHANGED, self._htmlChangeHandler )
         self.Bind ( wx.EVT_CLOSE,     self._closeHandler )
@@ -131,9 +137,10 @@ class MainFrame ( wx.Frame ):
         self.__fntmr = wx.PyTimer ( self._checkFile )
         self.__fntmr.Start ( self.__fnwait )
 
+        self.__html.SetPage ( '' )
+
     def _destroyProc ( self ):
         if self.__proc and self.__proc.is_alive ( ):
-            print '!!! Terminating', self.__proc
             self.__proc.terminate ( )
         self.__proc = None
         self.__reqq = None
@@ -160,15 +167,13 @@ class MainFrame ( wx.Frame ):
                 self.__reqq,
                 self.__resq )
             self.__proc.start ( )
-            print '!!! Spawned', self.__proc
 
-        print '!!! Sent', self.__fnmon.ts
         self.__reqq.put ( self.__fnmon.ts )
 
     def _htmlChangeHandler ( self, evt ):
         assert ( isinstance ( evt, HtmlChangeEvent ) )
 
-        print '!!! Got', evt.html
+        self.__html.SetPage ( evt.html )
 
     def _sigHandler ( self, signum, frame ):
         assert ( signum == signal.SIGUSR1 )
