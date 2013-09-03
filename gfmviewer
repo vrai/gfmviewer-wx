@@ -104,7 +104,6 @@ class FileSystemMon ( object):
 FileChangeEvent, EVT_FILE_CHANGED = wx.lib.newevent.NewEvent ( )
 HtmlChangeEvent, EVT_HTML_CHANGED = wx.lib.newevent.NewEvent ( )
 
-
 class MainFrame ( wx.Frame ):
     def __init__ ( self ):
         wx.Frame.__init__ (
@@ -122,8 +121,14 @@ class MainFrame ( wx.Frame ):
             self, style = wx.SIMPLE_BORDER | wx.HSCROLL | wx.VSCROLL )
         self.__sbar = wx.StatusBar ( self, style = 0 )
 
+        refresh = wx.Button ( self, label = 'Refresh' )
+
+        topbar = wx.BoxSizer ( wx.HORIZONTAL )
+        topbar.Add ( self.__fpkr, 1, wx.EXPAND )
+        topbar.Add ( refresh, 0, wx.LEFT, 4 )
+
         sizer = wx.BoxSizer ( wx.VERTICAL )
-        sizer.Add ( self.__fpkr, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 4 )
+        sizer.Add ( topbar, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 4 )
         sizer.Add ( self.__html, 1, wx.EXPAND | wx.ALL, 4 )
         sizer.Add ( self.__sbar, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 4 )
         self.SetSizer ( sizer )
@@ -132,6 +137,7 @@ class MainFrame ( wx.Frame ):
         self.Bind ( EVT_HTML_CHANGED,          self._htmlChangeHandler )
         self.Bind ( wx.EVT_CLOSE,              self._closeHandler )
         self.Bind ( wx.EVT_FILEPICKER_CHANGED, self._fileSelectHandler )
+        self.Bind ( wx.EVT_BUTTON,             self._refreshHandler, refresh )
 
         signal.signal ( signal.SIGUSR1, self._sigHandler )
 
@@ -179,8 +185,7 @@ class MainFrame ( wx.Frame ):
                 self.__resq )
             self.__proc.start ( )
 
-        self.__reqq.put ( self.__fnmon.ts )
-        self.__sbar.SetStatusText ( 'Requesting new HTML ...' )
+        self._refreshHandler ( evt )
 
     def _htmlChangeHandler ( self, evt ):
         assert ( isinstance ( evt, HtmlChangeEvent ) )
@@ -192,6 +197,11 @@ class MainFrame ( wx.Frame ):
         fn = self.__fpkr.GetPath ( )
         if not self.__fnmon or self.__fnmon.fn != fn:
             self.setFilename ( fn, False )
+
+    def _refreshHandler ( self, evt ):
+        if self.__reqq and self.__fnmon:
+            self.__reqq.put ( self.__fnmon.ts )
+            self.__sbar.SetStatusText ( 'Requesting new HTML ...' )
 
     def _sigHandler ( self, signum, frame ):
         assert ( signum == signal.SIGUSR1 )
