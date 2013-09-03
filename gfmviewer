@@ -6,13 +6,10 @@ import sys
 
 # TODO Find a proper file system watcher
 
-import argparse, httplib, json, os, signal, stat
+import argparse, httplib, json, os, signal, stat, time
 import wx, wx.html, wx.lib.newevent
 from multiprocessing import Process, Queue
 from Queue import Empty
-
-FileChangeEvent, EVT_FILE_CHANGED = wx.lib.newevent.NewEvent ( )
-HtmlChangeEvent, EVT_HTML_CHANGED = wx.lib.newevent.NewEvent ( )
 
 
 class LoaderProcess ( Process ):
@@ -104,6 +101,10 @@ class FileSystemMon ( object):
         return False
 
 
+FileChangeEvent, EVT_FILE_CHANGED = wx.lib.newevent.NewEvent ( )
+HtmlChangeEvent, EVT_HTML_CHANGED = wx.lib.newevent.NewEvent ( )
+
+
 class MainFrame ( wx.Frame ):
     def __init__ ( self ):
         wx.Frame.__init__ (
@@ -116,19 +117,25 @@ class MainFrame ( wx.Frame ):
         self.__resq = None
         self.__proc = None
 
-        self.__html = wx.html.HtmlWindow ( self )
+        self.__fpkr = wx.FilePickerCtrl ( self, style = wx.FLP_USE_TEXTCTRL | wx.FLP_OPEN | wx.FLP_FILE_MUST_EXIST | wx.FLP_CHANGE_DIR )
+        self.__html = wx.html.HtmlWindow (
+            self, style = wx.SIMPLE_BORDER | wx.HSCROLL | wx.VSCROLL )
+        self.__sbar = wx.StatusBar ( self, style = 0 )
 
         sizer = wx.BoxSizer ( wx.VERTICAL )
+        sizer.Add ( self.__fpkr, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 4 )
         sizer.Add ( self.__html, 1, wx.EXPAND | wx.ALL, 4 )
+        sizer.Add ( self.__sbar, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 4 )
         self.SetSizer ( sizer )
 
-        self.Bind ( EVT_FILE_CHANGED, self._fileChangeHandler )
-        self.Bind ( EVT_HTML_CHANGED, self._htmlChangeHandler )
-        self.Bind ( wx.EVT_CLOSE,     self._closeHandler )
+        self.Bind ( EVT_FILE_CHANGED,          self._fileChangeHandler )
+        self.Bind ( EVT_HTML_CHANGED,          self._htmlChangeHandler )
+        self.Bind ( wx.EVT_CLOSE,              self._closeHandler )
+        self.Bind ( wx.EVT_FILEPICKER_CHANGED, self._fileSelectHandler )
 
         signal.signal ( signal.SIGUSR1, self._sigHandler )
 
-    def setFilename ( self, fn ):
+    def setFilename ( self, fn, updategui = True ):
         if self.__fntmr and self.__fntmr.IsRunning ( ):
             self.__fntmr.Stop ( )
         self._destroyProc ( )
@@ -138,6 +145,11 @@ class MainFrame ( wx.Frame ):
         self.__fntmr.Start ( self.__fnwait )
 
         self.__html.SetPage ( '' )
+        self.__sbar.SetStatusText ( 'Idle' )
+
+        if updategui:
+            self.__fpkr.SetPath ( fn )
+            self.__html.SetFocus ( )
 
     def _destroyProc ( self ):
         if self.__proc and self.__proc.is_alive ( ):
@@ -157,7 +169,6 @@ class MainFrame ( wx.Frame ):
 
     def _fileChangeHandler ( self, evt ):
         assert ( isinstance ( evt, FileChangeEvent ) )
-
         if not self.__proc:
             self.__reqq = Queue ( )
             self.__resq = Queue ( )
@@ -169,11 +180,18 @@ class MainFrame ( wx.Frame ):
             self.__proc.start ( )
 
         self.__reqq.put ( self.__fnmon.ts )
+        self.__sbar.SetStatusText ( 'Requesting new HTML ...' )
 
     def _htmlChangeHandler ( self, evt ):
         assert ( isinstance ( evt, HtmlChangeEvent ) )
-
         self.__html.SetPage ( evt.html )
+        self.__sbar.SetStatusText ( 'Last updated %s' %
+            time.strftime ( '%Y %b %d %H:%M:%S', time.localtime ( evt.ts ) ) )
+
+    def _fileSelectHandler ( self, evt ):
+        fn = self.__fpkr.GetPath ( )
+        if not self.__fnmon or self.__fnmon.fn != fn:
+            self.setFilename ( fn, False )
 
     def _sigHandler ( self, signum, frame ):
         assert ( signum == signal.SIGUSR1 )
