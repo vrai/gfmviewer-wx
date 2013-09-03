@@ -6,8 +6,9 @@ import sys
 
 # TODO Find a proper file system watcher
 
-import argparse, httplib, json, os, signal, stat, time
+import argparse, base64, httplib, json, os, signal, stat, time
 import wx, wx.html, wx.lib.newevent
+from cStringIO import StringIO
 from multiprocessing import Process, Queue
 from Queue import Empty
 
@@ -141,6 +142,8 @@ class MainFrame ( wx.Frame ):
 
         signal.signal ( signal.SIGUSR1, self._sigHandler )
 
+        self.SetIcon ( _loadicon ( ) )
+
     def setFilename ( self, fn, updategui = True ):
         if self.__fntmr and self.__fntmr.IsRunning ( ):
             self.__fntmr.Stop ( )
@@ -219,6 +222,40 @@ class MainFrame ( wx.Frame ):
         # Don't manipulate the GUI from a signal handler
         evt = HtmlChangeEvent ( ts = res [ 0 ], html = res [ 1 ] )
         wx.CallAfter ( wx.PostEvent, self, evt )
+
+
+def _loadicon ( ):
+    # This is the standard 32x20 PNG Markdown icon in base64 form
+    dt = 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAUCAYAAADskT9PAAAAGXRFWHRTb2Z0d2Fy' \
+         'ZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAA2ZpVFh0WE1MOmNvbS5hZG9iZS54bXAA' \
+         'AAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5U' \
+         'Y3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6' \
+         'eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMC1jMDYwIDYxLjEzNDc3NywgMjAxMC8w' \
+         'Mi8xMi0xNzozMjowMCAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRw' \
+         'Oi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpE' \
+         'ZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5h' \
+         'ZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0UmVmPSJodHRwOi8vbnMuYWRv' \
+         'YmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VSZWYjIiB4bWxuczp4bXA9Imh0' \
+         'dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtcE1NOk9yaWdpbmFsRG9jdW1l' \
+         'bnRJRD0ieG1wLmRpZDowODgwMTE3NDA3MjA2ODExOTEwOUFEQzNCQUI2ODlCMSIg' \
+         'eG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDpBMTJFN0Y2NjY1QzQxMUUxODUzREE3' \
+         'M0Q2QzFENEJGRSIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDpBMTJFN0Y2NTY1' \
+         'QzQxMUUxODUzREE3M0Q2QzFENEJGRSIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQ' \
+         'aG90b3Nob3AgQ1M1IE1hY2ludG9zaCI+IDx4bXBNTTpEZXJpdmVkRnJvbSBzdFJl' \
+         'ZjppbnN0YW5jZUlEPSJ4bXAuaWlkOjA2ODAxMTc0MDcyMDY4MTE4QTZEOTRGODVF' \
+         'QjcwOTYwIiBzdFJlZjpkb2N1bWVudElEPSJ4bXAuZGlkOjA4ODAxMTc0MDcyMDY4' \
+         'MTE5MTA5QURDM0JBQjY4OUIxIi8+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpS' \
+         'REY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+CAukPAAAAN1JREFU' \
+         'eNpiYGBgsAfik0D8n84YZKc9I5B4DsQSDAMDXjBCXQMCjHS2HGwvE8MAg0HrAOTE' \
+         'EotFPhZNDSEzCMbFfzyavwGxFpIciP2ZCg6AyxFyAAhfBWJOKL6KRZ5sB7AQGVUg' \
+         'X09DYlM9O+ALgUVYfLyInlGAHuwgNg8OC3oJlH695DgAFuzf0BIkLh8uxWH5UnJD' \
+         'AAYSoJhQELMB8V40+b1QcYocQEoc8wPxGajcGSifgZ4OAAFRIN4OpXHqH62MBtwB' \
+         'oGB/AsTSA2T/UxDhAW0V0btJBrLTAyDAALBwz7npOTMtAAAAAElFTkSuQmCC'
+    stream = StringIO ( base64.b64decode ( dt ) )
+    image = wx.ImageFromStream ( stream, wx.BITMAP_TYPE_PNG )
+    icon = wx.EmptyIcon ( )
+    icon.CopyFromBitmap ( wx.BitmapFromImage ( image ) )
+    return icon
 
 
 def _fork ( cfg ):
