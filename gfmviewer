@@ -8,13 +8,18 @@ if not hasattr ( sys, 'frozen' ):
     import wxversion
     wxversion.select ( ( '2.8', '2.9' ) )
 
-# TODO Find a proper file system watcher
-
 import argparse, base64, httplib, json, os, signal, stat, time
 import wx, wx.html, wx.lib.newevent
 from cStringIO import StringIO
 from multiprocessing import Process, Queue
 from Queue import Empty
+
+# Attempt to load in pyinotify - this is optional
+try:
+    import pyinotify
+    _pyinotifyok = True
+except ImportError:
+    _pyinotifyok = False
 
 
 class LoaderProcess ( Process ):
@@ -85,9 +90,11 @@ class LoaderProcess ( Process ):
                 pass
 
 
-class FileSystemMon ( object):
-    def __init__ ( self, fn ):
-        self.__fn = fn
+class FileSystemPoller ( object ):
+    def __init__ ( self, cb ):
+        self.__cb = cb
+        self.__fn = None
+        self.__timer = None
         self.__ts = -1
 
     @property
@@ -98,24 +105,41 @@ class FileSystemMon ( object):
     def ts ( self ):
         return self.__ts
 
-    def check ( self ):
+    def setFilename ( self, fn ):
+        self.stop ( )
+        self.__fn = fn
+        self.__timer = wx.PyTimer ( self._checkFile )
+        self.__timer.Start ( 1000 )
+
+    def stop ( self ):
+        if self.__timer and self.__timer.IsRunning ( ):
+            self.__timer.Stop ( )
+        self.__timer = None
+
+    def _checkFile ( self ):
         ts = os.stat ( self.__fn ) [ stat.ST_MTIME ]
         if ts != self.__ts:
             self.__ts = ts
-            return True
-        return False
+            self.__cb ( self.fn, self.ts )
+
+
+class FileSystemMonitorFactory ( object ):
+    def __init__ ( self, forcepoll ):
+        self.__forcepoll = forcepoll
+
+    def __call__ ( self, cb ):
+        # TODO Add support for Monitor
+        return FileSystemPoller ( cb )
 
 
 FileChangeEvent, EVT_FILE_CHANGED = wx.lib.newevent.NewEvent ( )
 HtmlChangeEvent, EVT_HTML_CHANGED = wx.lib.newevent.NewEvent ( )
 
 class MainFrame ( wx.Frame ):
-    def __init__ ( self ):
+    def __init__ ( self, fsmonfactory ):
         wx.Frame.__init__ (
             self, None, wx.ID_ANY, 'Testing' )
-        self.__fnwait = 1000
-        self.__fntmr = None
-        self.__fnmon = None
+        self.__fnmon = fsmonfactory ( self._postFileChange )
 
         self.__reqq = None
         self.__resq = None
@@ -151,13 +175,11 @@ class MainFrame ( wx.Frame ):
         self.SetIcon ( _loadicon ( ) )
 
     def setFilename ( self, fn, updategui = True ):
-        if self.__fntmr and self.__fntmr.IsRunning ( ):
-            self.__fntmr.Stop ( )
+        if self.__fnmon:
+            self.__fnmon.stop ( )
         self._destroyProc ( )
 
-        self.__fnmon = FileSystemMon ( fn )
-        self.__fntmr = wx.PyTimer ( self._checkFile )
-        self.__fntmr.Start ( self.__fnwait )
+        self.__fnmon.setFilename ( fn )
 
         self.__html.SetPage ( '' )
         self.__sbar.SetStatusText ( 'Idle' )
@@ -173,10 +195,10 @@ class MainFrame ( wx.Frame ):
         self.__reqq = None
         self.__resq = None
 
-    def _checkFile ( self ):
-        if self.__fnmon.check ( ):
-            evt = FileChangeEvent ( ts = self.__fnmon.ts )
-            wx.PostEvent ( self, evt )
+    def _postFileChange ( self, fn, ts ):
+        print '!!!', fn, ts
+        evt = FileChangeEvent ( ts = self.__fnmon.ts )
+        wx.PostEvent ( self, evt )
 
     def _closeHandler ( self, evt ):
         self._destroyProc ( )
@@ -297,6 +319,10 @@ def _getconfig ( ):
         '-f', '--fork', action = 'store_true',
         help = 'fork a copy of the process in to the background and then '
                'return immediately (leaving the background process running)' )
+    parser.add_argument (
+        '-p', '--poll', action = 'store_true',
+        help = 'always poll for file changes, even if file notification is '
+               'available' )
 
     return parser.parse_args ( )
 
@@ -307,7 +333,7 @@ if __name__ == '__main__':
         _fork ( cfg )
 
     app = wx.App ( False )
-    frame = MainFrame ( )
+    frame = MainFrame ( FileSystemMonitorFactory ( cfg.poll ) )
     frame.setFilename ( cfg.fn [ 0 ] )
     frame.Show ( True )
     app.MainLoop ( )
