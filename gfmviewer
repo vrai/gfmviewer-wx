@@ -116,11 +116,66 @@ class FileSystemPoller ( object ):
             self.__timer.Stop ( )
         self.__timer = None
 
+    def destroy ( self ):
+        self.stop ( )
+
     def _checkFile ( self ):
         ts = os.stat ( self.__fn ) [ stat.ST_MTIME ]
         if ts != self.__ts:
             self.__ts = ts
-            self.__cb ( self.fn, self.ts )
+            self.__cb ( )
+
+
+class InotifyMonitor ( object ):
+    def __init__ ( self, cb ):
+        class IMEvent ( pyinotify.ProcessEvent ):
+            def __init__ ( self, cb ):
+                pyinotify.ProcessEvent.__init__ ( self )
+                self.__cb = cb
+
+            def process_default ( self, evt ):
+                if evt.maskname not in [ 'IN_IGNORED' ]:
+                    self.__cb ( evt )
+
+        self.__wm = pyinotify.WatchManager ( )
+        self.__notifier = pyinotify.ThreadedNotifier (
+            self.__wm, IMEvent ( self._callback ) )
+        self.__notifier.start ( )
+        self.__hndls = { }
+        self.__fn = None
+        self.__cb = cb
+        self.__ts = -1
+
+    @property
+    def fn ( self ):
+        return self.__fn
+
+    @property
+    def ts ( self ):
+        return self.__ts
+
+    def setFilename ( self, fn ):
+        mask = pyinotify.EventsCodes.ALL_FLAGS [ 'IN_MODIFY' ] | \
+               pyinotify.EventsCodes.ALL_FLAGS [ 'IN_CREATE' ] | \
+               pyinotify.EventsCodes.ALL_FLAGS [ 'IN_ATTRIB' ]
+
+        self.stop ( )
+        self.__fn = fn
+        self.__hndls = self.__wm.add_watch (
+            fn, mask, rec = True )
+
+    def stop ( self ):
+        for fn, ident in self.__hndls.iteritems ( ):
+            self.__wm.rm_watch ( ident )
+        self.__hndls = { }
+
+    def destroy ( self ):
+        self.stop ( )
+        self.__notifier.stop ( )
+
+    def _callback ( self, evt ):
+        self.__ts = time.time ( )
+        self.__cb ( )
 
 
 class FileSystemMonitorFactory ( object ):
@@ -128,7 +183,8 @@ class FileSystemMonitorFactory ( object ):
         self.__forcepoll = forcepoll
 
     def __call__ ( self, cb ):
-        # TODO Add support for Monitor
+        if _pyinotifyok and not self.__forcepoll:
+            return InotifyMonitor ( cb )
         return FileSystemPoller ( cb )
 
 
@@ -175,8 +231,7 @@ class MainFrame ( wx.Frame ):
         self.SetIcon ( _loadicon ( ) )
 
     def setFilename ( self, fn, updategui = True ):
-        if self.__fnmon:
-            self.__fnmon.stop ( )
+        self.__fnmon.stop ( )
         self._destroyProc ( )
 
         self.__fnmon.setFilename ( fn )
@@ -195,12 +250,12 @@ class MainFrame ( wx.Frame ):
         self.__reqq = None
         self.__resq = None
 
-    def _postFileChange ( self, fn, ts ):
-        print '!!!', fn, ts
-        evt = FileChangeEvent ( ts = self.__fnmon.ts )
+    def _postFileChange ( self ):
+        evt = FileChangeEvent ( )
         wx.PostEvent ( self, evt )
 
     def _closeHandler ( self, evt ):
+        self.__fnmon.destroy ( )
         self._destroyProc ( )
         self.Destroy ( )
 
