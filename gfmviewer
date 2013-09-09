@@ -42,7 +42,12 @@ class LoaderThread ( Thread ):
                 break
             except Exception, err:
                 sys.stderr.write ( 'LoaderThread error: %s\n\n' % err )
-                raise   # TODO Remove
+                self.__cb (
+                    time.time ( ),
+                    '<html><body>'
+                    '<h1>Github API request failed</h1>'
+                    '<p>%s</p>'
+                    '</body></html>' % err )
 
     def terminate ( self ):
         if self.__alive:
@@ -126,10 +131,13 @@ class FileSystemPoller ( object ):
         self.stop ( )
 
     def _checkFile ( self ):
-        ts = os.stat ( self.__fn ) [ stat.ST_MTIME ]
-        if ts != self.__ts:
-            self.__ts = ts
-            self.__cb ( )
+        try:
+            ts = os.stat ( self.__fn ) [ stat.ST_MTIME ]
+            if ts != self.__ts:
+                self.__ts = ts
+                self.__cb ( )
+        except OSError:
+            pass
 
 
 class InotifyMonitor ( object ):
