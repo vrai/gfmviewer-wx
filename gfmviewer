@@ -19,6 +19,7 @@ try:
     import pyinotify
     _pyinotifyok = True
 except ImportError:
+    sys.stderr.write ( 'Cannot find pyinotify module\n' )
     _pyinotifyok = False
 
 
@@ -94,7 +95,7 @@ class LoaderThread ( Thread ):
             except Error:
                 pass
 
-                
+
 class FileSystemPoller ( object ):
     def __init__ ( self, cb ):
         self.__cb = cb
@@ -168,6 +169,8 @@ class InotifyMonitor ( object ):
         self.__fn = fn
         self.__hndls = self.__wm.add_watch (
             fn, mask, rec = True )
+        self.__ts = time.time ( )
+        self.__cb ( )
 
     def stop ( self ):
         for fn, ident in self.__hndls.iteritems ( ):
