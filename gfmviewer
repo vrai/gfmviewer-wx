@@ -116,6 +116,10 @@ class FileSystemPoller ( object ):
     def ts ( self ):
         return self.__ts
 
+    @property
+    def ok ( self ):
+        return True
+
     def setFilename ( self, fn ):
         self.stop ( )
         self.__fn = fn
@@ -168,6 +172,10 @@ class InotifyMonitor ( object ):
     def ts ( self ):
         return self.__ts
 
+    @property
+    def ok ( self ):
+        return bool ( self.__hndls )
+
     def setFilename ( self, fn ):
         mask = pyinotify.EventsCodes.ALL_FLAGS [ 'IN_MODIFY' ] | \
                pyinotify.EventsCodes.ALL_FLAGS [ 'IN_CREATE' ] | \
@@ -177,8 +185,13 @@ class InotifyMonitor ( object ):
         self.__fn = fn
         self.__hndls = self.__wm.add_watch (
             fn, mask, rec = True )
-        self.__ts = time.time ( )
-        self.__cb ( )
+
+        res = self.__hndls.get ( fn )
+        if res and res > 0:
+            self.__ts = time.time ( )
+            self.__cb ( )
+        else:
+            self.__hndls = { }
 
     def stop ( self ):
         for fn, ident in self.__hndls.iteritems ( ):
@@ -206,6 +219,7 @@ class FileSystemMonitorFactory ( object ):
 
 FileChangeEvent, EVT_FILE_CHANGED = wx.lib.newevent.NewEvent ( )
 HtmlChangeEvent, EVT_HTML_CHANGED = wx.lib.newevent.NewEvent ( )
+
 
 class MainFrame ( wx.Frame ):
     def __init__ ( self, fsmonfactory ):
@@ -248,9 +262,16 @@ class MainFrame ( wx.Frame ):
         self._destroyProc ( )
 
         self.__fnmon.setFilename ( fn )
-
-        self.__html.SetPage ( '' )
-        self.__sbar.SetStatusText ( 'Idle' )
+        if not self.__fnmon.ok:
+            self.__html.SetPage (
+                '<html><body>'
+                '<h1>Failed to create file monitor</h1>'
+                '<p>Problem monitoring %s; does file exist?</p>'
+                '</body></html>' % fn )
+            self.__sbar.SetStatusText ( 'Failed' )
+        else:
+            self.__html.SetPage ( '' )
+            self.__sbar.SetStatusText ( 'Idle' )
 
         if updategui:
             self.__fpkr.SetPath ( fn )
