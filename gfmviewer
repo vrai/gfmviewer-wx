@@ -279,6 +279,11 @@ class MainFrame ( wx.Frame ):
         self.__fnmon.stop ( )
         self._destroyProc ( )
 
+        if fn is None:
+            self._idleDisplay ( )
+            self.__fpkr.SetFocus ( )
+            return
+
         self.__fnmon.setFilename ( fn )
         if not self.__fnmon.ok:
             self.__html.SetPage (
@@ -288,12 +293,15 @@ class MainFrame ( wx.Frame ):
                 '</body></html>' % fn )
             self.__sbar.SetStatusText ( 'Failed' )
         else:
-            self.__html.SetPage ( '' )
-            self.__sbar.SetStatusText ( 'Idle' )
+            self._idleDisplay ( )
 
         if updategui:
             self.__fpkr.SetPath ( fn )
             self.__html.SetFocus ( )
+
+    def _idleDisplay ( self ):
+        self.__html.SetPage ( '' )
+        self.__sbar.SetStatusText ( 'Idle' )
 
     def _destroyProc ( self ):
         if self.__load:
@@ -400,8 +408,13 @@ def _fork ( cfg ):
 
 def _getconfig ( ):
     parser = argparse.ArgumentParser ( description =
-        'TODO Some kind of blurb is required here. '
-        'Maybe an example?' )
+        'Converts a Github Flavoured Markdown file in to HTML - using the '
+        'Github API - and displays it. The source file is monitored and '
+        'will be reformatted / displayed on any change.'
+        'By default a proper file notification library will be used to '
+        'watch the file. However if this is not available, or it is '
+        'disabled with the --poll option, the file\'s modification time '
+        'will be checked once a second.' )
 
     parser.add_argument (
         'fn', metavar = 'FILE', type = str, nargs = '?',
@@ -425,7 +438,6 @@ if __name__ == '__main__':
 
     app = wx.App ( False )
     frame = MainFrame ( FileSystemMonitorFactory ( cfg.poll ) )
-    if cfg.fn:
-        frame.setFilename ( cfg.fn )
+    frame.setFilename ( cfg.fn )
     frame.Show ( True )
     app.MainLoop ( )
