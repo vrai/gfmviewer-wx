@@ -8,7 +8,7 @@ if not hasattr ( sys, 'frozen' ):
     import wxversion
     wxversion.select ( ( '2.8', '2.9' ) )
 
-import argparse, base64, httplib, json, os, stat, time
+import argparse, base64, httplib, json, os, stat, time, urlparse
 import wx, wx.html, wx.lib.newevent
 from cStringIO import StringIO
 from Queue import Queue, Empty
@@ -217,6 +217,24 @@ class FileSystemMonitorFactory ( object ):
         return FileSystemPoller ( cb )
 
 
+class HtmlWindow ( wx.html.HtmlWindow ):
+    def __init__ ( self, prnt, style ):
+        wx.html.HtmlWindow.__init__ ( self, prnt, style = style )
+
+    def OnOpeningURL ( self, typ, url ):
+        if typ == wx.html.HTML_URL_PAGE:
+            return wx.html.HTML_BLOCK
+
+        # The HtmlWindow widget doesn't like loading https:// protected
+        # images from Github - so switch to http://
+        if typ == wx.html.HTML_URL_IMAGE:
+            parts = list ( urlparse.urlparse ( url ) )
+            if parts [ 0 ] == 'https':
+                return urlparse.urlunparse ( [ 'http' ] + parts [ 1 : ] )
+
+        return wx.html.HTML_OPEN
+
+
 FileChangeEvent, EVT_FILE_CHANGED = wx.lib.newevent.NewEvent ( )
 HtmlChangeEvent, EVT_HTML_CHANGED = wx.lib.newevent.NewEvent ( )
 
@@ -233,7 +251,7 @@ class MainFrame ( wx.Frame ):
         self.__fpkr = wx.FilePickerCtrl (
                 self, style = wx.FLP_USE_TEXTCTRL | wx.FLP_OPEN |
                     wx.FLP_FILE_MUST_EXIST | wx.FLP_CHANGE_DIR )
-        self.__html = wx.html.HtmlWindow (
+        self.__html = HtmlWindow (
             self, style = wx.SIMPLE_BORDER | wx.HSCROLL | wx.VSCROLL )
         self.__sbar = wx.StatusBar ( self, style = 0 )
 
@@ -386,7 +404,7 @@ def _getconfig ( ):
         'Maybe an example?' )
 
     parser.add_argument (
-        'fn', metavar = 'FILE', type = str, nargs = 1,
+        'fn', metavar = 'FILE', type = str, nargs = '?',
         help = 'markdown file to display' )
     parser.add_argument (
         '-f', '--fork', action = 'store_true',
@@ -407,6 +425,7 @@ if __name__ == '__main__':
 
     app = wx.App ( False )
     frame = MainFrame ( FileSystemMonitorFactory ( cfg.poll ) )
-    frame.setFilename ( cfg.fn [ 0 ] )
+    if cfg.fn:
+        frame.setFilename ( cfg.fn )
     frame.Show ( True )
     app.MainLoop ( )
