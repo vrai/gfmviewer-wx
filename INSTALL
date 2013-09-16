@@ -1,0 +1,36 @@
+INSTALLATION INSTRUCTIONS FOR gfmviewer-wx
+=============================================================================
+
+The build process has been tested on OS X 10.8.4 and a variety of Linux
+installs (including Raspbian/Wheezy). It requires a modern version of Python
+2.x and wxPython 2.8 (stable) or 2.9 (development). Any Unix-like environment
+should work. Technically a `standard' installation of Python/wxPython on
+Windows should also work; however this has not been tested.
+
+
+Installing the package on a Unix-like system
+------------------------------------------
+
+The package depends on wxPython 2.8/2.9; so ensure that one of these is
+installed. The library can be downloaded using a package manager or from the
+original web page:
+
+    http://www.wxpython.org/download.php
+
+The gfmviewer script itself is pure Python and so only requires installing.
+The usual distutils options are available (e.g. --prefix if you don't want
+the script installed in the standard location). More details can be found
+using:
+
+    $ python ./setup.py --help
+
+To perform a standard install (assuming root permission is required):
+
+    $ sudo python ./setup.py install
+
+Once installed it should be possible to start the script from the command-line
+using:
+
+    $ gfmviewer
+
+See the README file for further.
