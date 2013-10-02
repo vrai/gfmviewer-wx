@@ -246,7 +246,7 @@ HtmlChangeEvent, EVT_HTML_CHANGED = wx.lib.newevent.NewEvent ( )
 class MainFrame ( wx.Frame ):
     def __init__ ( self, fsmonfactory ):
         wx.Frame.__init__ (
-            self, None, wx.ID_ANY, 'Testing' )
+            self, None, wx.ID_ANY, 'gfmviewer' )
         self.__fnmon = fsmonfactory ( self._postFileChange )
 
         self.__que = None
